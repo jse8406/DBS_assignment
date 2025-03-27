@@ -24,8 +24,16 @@ meta data 는 필드의 갯수, 각 필드의 길이, 필드의 이름, 필드�
 
 column은 총 3개로 각각의 이름은 id, code, tag로 각각 5 4 3 바이트로 결정. 예시)
  00001;A100;aab
-
+nullbimap, field1, field2, field3, pointer
+1 5 4 3 2 = 15
 Record : 15 bytes
+
+00001;A100;aab
+00002;null;xxt
+00003;null;null
+00004;A100;aab
+
+테스트 데이터는 각각 13, 9, 6, 13 바이트로 총 41 (test)
 Header : 18 bytes
 Block : 3~4 records = 50byte로 하자
 

@@ -1,5 +1,8 @@
 package org.example;
 
+import model.Records;
+
+import java.util.List;
 import java.util.Scanner;
 
 public class DBMSRunner {
@@ -30,10 +33,15 @@ public class DBMSRunner {
                 case 4:
                     DBMS.searchRecord(scanner);
                     break;
-                case 5:
-                    DBMS.loadHeaderFromFile(scanner);
+                case 5: // 디버깅용
+                    DBMS.loadHeaderBlockFromFile(scanner);
                     break;
                 case 6:
+                    List<Records> records = DBMS.readRecordsFromBinaryFile("records.bin");
+                    for (Records record : records) {
+                        System.out.println(record);
+                    }
+                case 7:
                     System.out.println("Exiting program.");
                     return;
                 default:
