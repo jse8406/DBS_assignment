@@ -41,3 +41,16 @@ Block : 3~4 records = 50byte로 하자
 
 Error : readAndDeserializeFromBinary함수에서 읽으려고 설정한 파일 크기가 저장된 파일보다
 크면 없는 부분을 읽는거나 마찬가지이기 때문에 null 에러남.
+
+search record든 search field든 처음에 header를 읽고 시작해야하는 것은 똑같음
+
+15 11 8 15
+15 11 12
+15 11 15 8
+15 12 11
+15
+
+
+필드 검색  : 파일명, 필드 입력 시 해당 파일에 해당 필드 다 가져오기 f1 code => f1파일 code값 다 가져옴
+-완-
+레코드 검색 : 파일명, search key 값의 범위를 주면 그 범위 안의 레코드들 가져오기. MIN <= A <= MAX 다 가져옴

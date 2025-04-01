@@ -5,6 +5,7 @@ import model.Header;
 import model.Records;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
 
@@ -13,33 +14,31 @@ public class DBMS {
     private static final Short BLOCK_SIZE = 50;  // 블록 크기
     private static final String jdbcUrl = "jdbc:mysql://localhost:3306/dbs_assignment";
     private static final String user = "root";
-    private static final String password = "0000";
+    private static final String password = "1111";
 
-// 정보를 주면 테이블 생성하고 거기서 메타데이터 가져와서 bin 파일로 저장
+    // 정보를 주면 테이블 생성하고 거기서 메타데이터 가져와서 bin 파일로 저장
     public static void createFileAndTable(Scanner scanner) {
+        // init pointer
+        short firstBlockPointer_init = -1;
 
-        // get file name
+        // 1. 파일 이름 입력
         System.out.print("Enter file name: ");
         String fileName = scanner.nextLine().trim() + ".bin";
+        String tableName = fileName.replace(".bin", "");
 
-        // get field names
+        // 2. 필드 이름 입력
         System.out.print("Enter field names separated by space: ");
-        String fieldsInput = scanner.nextLine();
-        List<String> fieldNames = Arrays.asList(fieldsInput.split(" "));
+        List<String> fieldNames = Arrays.asList(scanner.nextLine().trim().split(" "));
 
-        // get field sizes
-        List<Integer> fieldSizes = new ArrayList<>();
+        // 3. 필드 크기 입력
         System.out.print("Enter field sizes separated by space (same order as field names): ");
-        String sizesInput = scanner.nextLine();
-        List<String> sizeStrings = Arrays.asList(sizesInput.split(" "));
-
-        // Ensure sizes and field names match
+        List<String> sizeStrings = Arrays.asList(scanner.nextLine().trim().split(" "));
         if (fieldNames.size() != sizeStrings.size()) {
             System.out.println("Error: Number of field names and field sizes do not match!");
             return;
         }
 
-        // Convert size inputs to integers
+        List<Integer> fieldSizes = new ArrayList<>();
         for (String sizeStr : sizeStrings) {
             try {
                 fieldSizes.add(Integer.parseInt(sizeStr));
@@ -48,9 +47,23 @@ public class DBMS {
                 return;
             }
         }
+        // 4. 필드 개수 저장
+        byte filedCount = (byte) fieldNames.size();
 
-        createTableInDatabase(fileName, fieldNames, fieldSizes);
+        // 5. 파일 순서 저장
+        List<Integer> fieldOrder = new ArrayList<>();
+        for (int i = 0; i < fieldNames.size(); i++) {
+            fieldOrder.add(i);
+        }
+        //
+
+
+        // 테이블 생성
+        createTableInDatabase(tableName, fieldNames, fieldSizes);
+        // 헤더 정보 저장과 함께 bin파일 생성
+        saveHeaderToBinary(fileName, firstBlockPointer_init, filedCount, fieldNames, fieldSizes, fieldOrder);
     }
+    // 입력 정보 기반 MYSQL DB에 table 생성
     private static void createTableInDatabase(String tableName, List<String> fieldNames, List<Integer> fieldSizes) {
         tableName = tableName.replace(".bin", ""); // Remove .bin extension
         StringBuilder sql = new StringBuilder("CREATE TABLE IF NOT EXISTS dbs_assignment." + tableName + " (");
@@ -65,46 +78,14 @@ public class DBMS {
              Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql.toString());
             System.out.println("Table Created in Database: " + tableName);
-            getMetaDataFromTable(tableName);
         } catch (SQLException e) {
             System.out.println("Error while creating table: " + e.getMessage());
         }
     }
-    public static void getMetaDataFromTable(String tableName) {
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, user, password)) {
-            DatabaseMetaData dbMetaData = conn.getMetaData();
-            ResultSet columns = dbMetaData.getColumns(null, null, tableName, null);
-
-            System.out.println("\n=== Table Metadata: " + tableName + " ===");
-
-            List<String> fieldNamesList = new ArrayList<>();
-            List<Integer> fieldSizesList = new ArrayList<>();
-            List<Integer> fieldOrderList = new ArrayList<>();
-            int fieldCount = 0;
-
-            while (columns.next()) {
-                fieldCount++;
-                fieldNamesList.add(columns.getString("COLUMN_NAME"));
-                fieldSizesList.add(columns.getInt("COLUMN_SIZE"));
-                fieldOrderList.add(fieldCount - 1); // 필드 순서 (0부터 시작)
-            }
-
-            // 메타데이터 출력
-            System.out.println("Field Count: " + fieldCount);
-            System.out.println("Field Names: " + fieldNamesList);
-            System.out.println("Field Sizes: " + fieldSizesList);
-            System.out.println("Field Order: " + fieldOrderList);
-
-
-            //bin 파일로 저장
-            saveHeaderToBinary(tableName + ".bin", BLOCK_SIZE, (byte) fieldCount, fieldNamesList, fieldSizesList, fieldOrderList);
-
-        } catch (SQLException e) {
-            System.out.println("Error while getting metadata: " + e.getMessage());
-        }
-    }
+    // 입력 정보 기반 header 정보
     public static void saveHeaderToBinary(String fileName, Short firstBlockPointer, byte fieldCount, List<String> fieldNames,
                                           List<Integer> fieldSizes, List<Integer> fieldOrder) {
+    // create file with header block.
         try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(fileName))) {
 
             dos.writeShort(firstBlockPointer);
@@ -140,7 +121,7 @@ public class DBMS {
         }
     }
 
-
+    // 헤더 읽은 후 역직렬화를 통해 정보 추출
     public static Header readAndDeserializeHeaderFromBinary(String fileName) {
 
         if (!fileName.endsWith(".bin")) {
@@ -180,12 +161,6 @@ public class DBMS {
             byte[] freeSpace = new byte[32];
             dis.readFully(freeSpace);
 
-//            System.out.println("\n=== Loaded Header Metadata ===");
-//            System.out.println("First Block Pointer(2bytes): " + firstBlockPointer);
-//            System.out.println("Field Count(1bytes): " + fieldCount);
-//            System.out.println("Field Names(9bytes): " + fieldNames);
-//            System.out.println("Field Sizes(3bytes): " + fieldSizes);
-//            System.out.println("Field Order(3bytes): " + fieldOrder);
             return new Header(firstBlockPointer, fieldCount, fieldNames, fieldSizes, fieldOrder);
 
         } catch (IOException e) {
@@ -193,32 +168,10 @@ public class DBMS {
             return null;
         }
     }
-    public static void loadHeaderBlockFromFile(Scanner scanner) {
-        System.out.print("Enter file name to get metadata: ");
-        String fileName = scanner.nextLine().trim();
-
-        if (!fileName.endsWith(".bin")) {
-            fileName += ".bin";
-        }
-
-        File file = new File(fileName);
-        if (!file.exists()) {
-            System.out.println("Error: File '" + fileName + "' not found.");
-            return;
-        }
-        Header header = readAndDeserializeHeaderFromBinary(fileName);
-        assert header != null;
-        System.out.println(header.getFirstBlockPointer());
-        System.out.println(header.getFieldCount());
-        System.out.println(header.getFieldNames());
-        System.out.println(header.getFieldSizes());
-        System.out.println(header.getFieldOrder());
-
-    }
 
 
-
-    public static void readDataFileAndBulkInsert() {
+    public static List<Records> readDataFile() {
+    // read dataFile.txt
         List<Records> records;
         try (BufferedReader br = new BufferedReader(new FileReader("DataFile.txt"))) {
             String fileName = br.readLine().trim();
@@ -228,7 +181,7 @@ public class DBMS {
                 String line = br.readLine().trim();
                 String[] fields = line.split(";"); // `;`로 필드 구분
 
-                // ✅ 5. 레코드 객체 생성 및 리스트에 추가
+                //  5. 레코드 객체 생성 및 리스트에 추가
                 String id = fields[0];
                 String code = fields[1].equals("null") ? null : fields[1];
                 String tag = fields[2].equals("null") ? null : fields[2];
@@ -236,7 +189,7 @@ public class DBMS {
                 records.add(new Records(id, code, tag));
             }
 
-            // ✅ 6. 데이터 출력
+            //  6. 데이터 출력
             System.out.println("File Name: " + fileName);
             System.out.println("Record Count: " + recordCount);
             System.out.println("Records:");
@@ -246,92 +199,147 @@ public class DBMS {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        saveRecordToBinaryFile(records, "records.bin");
+        return records;
 
     }
     public static void saveRecordToBinaryFile(List<Records> records, String binFileName) {
-        try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(binFileName))) {
+        try (RandomAccessFile raf = new RandomAccessFile(binFileName, "rw")) {
+            List<Long> recordPositions = new ArrayList<>();
+
+            raf.seek(BLOCK_SIZE); // 헤더 영역 패스
+
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            long fileOffset = BLOCK_SIZE; // 실제 파일에 쓰여질 위치
+
             for (Records record : records) {
-                // nullbitmap 저장
-                byte nullbitmap = 0;
+                ByteArrayOutputStream recordBuffer = new ByteArrayOutputStream();
 
-                if (record.getCode() == null) {
-                    nullbitmap |= 1 << 6;
+                byte nullBitmap = 0;
+                if (record.getCode() == null) nullBitmap |= 1 << 6;
+                if (record.getTag() == null) nullBitmap |= 1 << 5;
+                recordBuffer.write(nullBitmap);
+
+                writeFixedString(recordBuffer, record.getId(), 5);
+                if (record.getCode() != null) writeFixedString(recordBuffer, record.getCode(), 4);
+                if (record.getTag() != null) writeFixedString(recordBuffer, record.getTag(), 3);
+
+                // nextRecordPointer 자리 예약 (2 bytes)
+                recordBuffer.write(0);
+                recordBuffer.write(0);
+
+                byte[] recordBytes = recordBuffer.toByteArray();
+
+                // 블록 크기 초과 여부 체크
+                if (buffer.size() + recordBytes.length > BLOCK_SIZE) {
+                    int padding = BLOCK_SIZE - buffer.size();
+                    if(padding> 0){
+                        buffer.write(new byte[padding]);
+                    }
+                    raf.write(buffer.toByteArray());
+                    fileOffset += BLOCK_SIZE;
+                    buffer.reset();
                 }
 
-                if (record.getTag() == null) {
-                    nullbitmap |= 1 << 5;
-                }
-                dos.writeByte(nullbitmap);
-
-                //  ID (5바이트) 저장
-                writeFixedString(dos, record.getId(), 5);
-
-                //  Code (4바이트) 저장 (null이면 저장x 처리)
-                if(record.getCode() != null){
-                    writeFixedString(dos,record.getCode(), 4);
-                }
-
-                //  Tag (3바이트) 저장 (null이면 저장x 처리)
-                if(record.getTag() != null){
-                    writeFixedString(dos,record.getTag(), 3);
-                }
+                recordPositions.add(fileOffset + buffer.size());
+                buffer.write(recordBytes);
             }
-            System.out.println("Records saved to binary file: " + binFileName);
+
+            // 마지막 버퍼 쓰기
+            if (buffer.size() > 0) {
+                int padding = BLOCK_SIZE - buffer.size();
+                if(padding>0){
+                    buffer.write(new byte[padding]);
+                }
+                raf.write(buffer.toByteArray());
+            }
+
+            // nextRecordPointer 업데이트
+            for (int i = 0; i < recordPositions.size() - 1; i++) {
+                long currentPos = recordPositions.get(i);
+                long nextPos = recordPositions.get(i + 1);
+                raf.seek(currentPos);
+
+                byte bitmap = raf.readByte();
+                raf.skipBytes(5);
+                if ((bitmap & (1 << 6)) == 0) raf.skipBytes(4);
+                if ((bitmap & (1 << 5)) == 0) raf.skipBytes(3);
+
+                raf.writeShort((short) nextPos);
+            }
+
+            // 첫 번째 레코드 offset 을 헤더에 기록
+            if (!recordPositions.isEmpty()) {
+                raf.seek(0);
+                raf.writeShort((short)(long)recordPositions.getFirst());
+            }
+            // 마지막 레코드 nextPointer 를 명시적으로 -1로 써주기
+            if (!recordPositions.isEmpty()) {
+                long lastPos = recordPositions.getLast();
+                raf.seek(lastPos);
+
+                byte bitmap = raf.readByte();
+                raf.skipBytes(5);
+                if ((bitmap & (1 << 6)) == 0) raf.skipBytes(4);
+                if ((bitmap & (1 << 5)) == 0) raf.skipBytes(3);
+
+                raf.writeShort((short) -1); // 마지막 레코드만 -1로 명시
+            }
+
+
+            System.out.println("Records saved with buffering and nextRecordPointer info.");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-
-    private static void writeFixedString(DataOutputStream dos, String data, int size) throws IOException {
-        byte[] bytes = data.getBytes(); // 문자열을 바이트 배열로 변환
-        int length = Math.min(bytes.length, size); // 크기를 초과하면 잘라냄
-
-        dos.write(bytes, 0, length); //  실제 데이터 쓰기
-
-        //  남은 공간을 공백(0)으로 채움
-        for (int i = length; i < size; i++) {
-            dos.writeByte(0); // Padding (빈 공간)
-        }
+    private static void writeFixedString(OutputStream os, String str, int length) throws IOException {
+        byte[] bytes = str != null ? str.getBytes(StandardCharsets.UTF_8) : new byte[0];
+        byte[] padded = Arrays.copyOf(bytes, length);
+        os.write(padded);
     }
 
-    public static List<Records> readRecordsFromBinaryFile(String binFileName) {
+
+
+    public static List<Records> readRecordsFromBlock(String binFileName, int blockNumber) {
+        Header header = readAndDeserializeHeaderFromBinary(binFileName);
+        if (header == null) {
+            System.out.println("Header is empty");
+            return Collections.emptyList();
+        }
+
+        Integer idByte = header.getFieldSizes().get(0);
+        Integer codeByte = header.getFieldSizes().get(1);
+        Integer tagByte = header.getFieldSizes().get(2);
+
+        long blockOffset = (long) blockNumber * BLOCK_SIZE;
+        long blockEnd = blockOffset + BLOCK_SIZE;
+
         List<Records> records = new ArrayList<>();
-        try (DataInputStream dis = new DataInputStream(new FileInputStream(binFileName))) {
-            while (dis.available() > 0) {
-                //  1. nullBitMap (1바이트) 읽기
-                byte nullBitMap = dis.readByte();
 
-                //  2. ID (5바이트) 읽기
-                String id = readFixedString(dis, 5);
+        try (RandomAccessFile raf = new RandomAccessFile(binFileName, "r")) {
+            raf.seek(blockOffset);
+            // 마지막 블록 free space 읽기 방지 && 그 다음 블록 읽기 전까지
+            while (blockOffset > -1 && blockOffset < blockEnd) {
+                byte nullBitMap = raf.readByte();
+                String id = readNByte(raf, idByte);
 
-                //  3. Code (4바이트) 읽기 (nullBitMap의 6번째 비트가 1이면 null)
-                String code = (isNullBitSet(nullBitMap, 6)) ? null : readFixedString(dis, 4);
+                String code = (isNullBitSet(nullBitMap, 6)) ? null : readNByte(raf, codeByte);
+                String tag  = (isNullBitSet(nullBitMap, 5)) ? null : readNByte(raf, tagByte);
 
-                //  4. Tag (3바이트) 읽기 (nullBitMap의 5번째 비트가 1이면 null)
-                String tag = (isNullBitSet(nullBitMap, 5)) ? null : readFixedString(dis, 3);
-
-                //  5. Record 객체 생성 및 리스트에 추가
-                records.add(new Records(id, code, tag));
+                short nextPointer = raf.readShort();
+                blockOffset = nextPointer;
+                records.add(new Records(id, code, tag, nextPointer));
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
+
         return records;
     }
-
-    /**
-     *  `readFully()`를 사용하여 고정된 크기의 문자열을 읽는 함수
-     */
-    private static String readFixedString(DataInputStream dis, int size) throws IOException {
+    private static String readNByte(RandomAccessFile raf, int size) throws IOException {
         byte[] bytes = new byte[size];
-        dis.readFully(bytes);
-        return new String(bytes).trim(); //  공백 제거 후 문자열 반환
+        raf.readFully(bytes);
+        return new String(bytes).trim(); // 공백 제거 후 문자열 반환
     }
-
-    /**
-     *  특정 비트가 1인지 확인하는 함수
-     */
     private static boolean isNullBitSet(byte nullBitMap, int bitPosition) {
         return (nullBitMap & (1 << bitPosition)) != 0;
     }
@@ -345,38 +353,121 @@ public class DBMS {
 
 
     public static void searchField(Scanner scanner) {
-        System.out.print("Enter field value to search: ");
-        String searchValue = scanner.nextLine();
+        // 1. 파일 이름 입력
+        System.out.println("Enter file name to search:");
+        String fileName = scanner.nextLine().trim() + ".bin";
 
-        try (BufferedReader br = new BufferedReader(new FileReader(FILE_NAME))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.contains(searchValue)) {
-                    System.out.println("Search result: " + line);
-                }
+        // 3. 파일 존재 확인
+        File file = new File(fileName);
+        if (!file.exists()) {
+            System.out.println("File not found: " + fileName);
+            return;
+        }
+        // 2. 필드 이름 입력
+        System.out.print("Enter field name to extract values (id/code/tag): ");
+        String fieldName = scanner.nextLine().trim().toLowerCase();
+
+
+        long fileLength = file.length();
+        int totalBlocks = (int) (fileLength / BLOCK_SIZE);
+
+        // 4. 필드 이름 유효성 체크
+        if (!fieldName.equals("id") && !fieldName.equals("code") && !fieldName.equals("tag")) {
+            System.out.println("Error: Field name '" + fieldName + "' does not exist. Use: id, code, or tag.");
+            return;
+        }
+
+        System.out.println("Values of field '" + fieldName + "':");
+
+        // 5. 블록 순회
+        for (int blockNum = 1; blockNum < totalBlocks; blockNum++) {
+            List<Records> recordsInBlock = readRecordsFromBlock(fileName, blockNum);
+
+            for (Records record : recordsInBlock) {
+                String value = switch (fieldName) {
+                    case "id" -> record.getId();
+                    case "code" -> record.getCode();
+                    case "tag" -> record.getTag();
+                    default -> null; // 이미 위에서 검사했지만 안정성용
+                };
+
+                System.out.println("\"" + value + "\"");
+
             }
-        } catch (IOException e) {
-            System.out.println("Error while searching: " + e.getMessage());
         }
     }
+
+
+
+
     public static void searchRecord(Scanner scanner) {
-        System.out.print("Enter Record ID to search: ");
-        String searchId = scanner.nextLine();
+        System.out.print("Enter file name to search: ");
+        String fileName = scanner.nextLine().trim() + ".bin";
 
-        try (BufferedReader br = new BufferedReader(new FileReader(FILE_NAME))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] fields = line.split(",");
-                if (fields.length > 0 && fields[0].equals(searchId)) {
-                    System.out.println("Record found: " + line);
-                    return;
+        File file = new File(fileName);
+        if (!file.exists()) {
+            System.out.println("File not found: " + fileName);
+            return;
+        }
+
+        System.out.print("Enter start ID (or MIN): ");
+        String startInput = scanner.nextLine().trim();
+
+        System.out.print("Enter end ID (or MAX): ");
+        String endInput = scanner.nextLine().trim();
+
+        int startId = 0;
+        int endId = Integer.MAX_VALUE;
+
+        try {
+            if (!startInput.equalsIgnoreCase("MIN")) {
+                startId = Integer.parseInt(startInput);
+            }
+            if (!endInput.equalsIgnoreCase("MAX")) {
+                endId = Integer.parseInt(endInput);
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid range input. Please enter numbers or MIN/MAX.");
+            return;
+        }
+
+        long fileLength = file.length();
+        int totalBlocks = (int) (fileLength / BLOCK_SIZE);
+
+        List<Records> foundRecords = new ArrayList<>();
+
+        outerLoop:
+        for (int blockNum = 1; blockNum < totalBlocks; blockNum++) {
+            List<Records> recordsInBlock = readRecordsFromBlock(fileName, blockNum);
+
+            for (Records record : recordsInBlock) {
+                try {
+                    int recordId = Integer.parseInt(record.getId());
+
+                    if (recordId > endId) {
+                        // 이미 정렬되어 있으므로, 이후 데이터는 볼 필요 없음
+                        break outerLoop;
+                    }
+
+                    if (recordId >= startId) {
+                        foundRecords.add(record);
+                    }
+                    // recordId < startId면 스킵만 함 (continue 역할)
+                } catch (NumberFormatException e) {
+                    System.out.println("Invalid ID format in record: " + record.getId());
                 }
             }
-            System.out.println("Record with the given ID not found.");
-        } catch (IOException e) {
-            System.out.println("Error while searching: " + e.getMessage());
+        }
+
+        if (foundRecords.isEmpty()) {
+            System.out.println("No records found in the given range.");
+        } else {
+            for (Records record : foundRecords) {
+                System.out.println("Record found: " + record);
+            }
         }
     }
+
 
 
 }

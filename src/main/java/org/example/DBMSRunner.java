@@ -13,8 +13,7 @@ public class DBMSRunner {
             System.out.println("2. Insert Record");
             System.out.println("3. Search Field");
             System.out.println("4. Search Record");
-            System.out.println("5. Show Header");
-            System.out.println("6. Exit");
+            System.out.println("5. Exit");
             System.out.print("Select an option: ");
 
             int option = scanner.nextInt();
@@ -25,7 +24,8 @@ public class DBMSRunner {
                     DBMS.createFileAndTable(scanner);
                     break;
                 case 2:
-                    DBMS.readDataFileAndBulkInsert();
+                    List<Records> writeRecords = DBMS.readDataFile();
+                    DBMS.saveRecordToBinaryFile(writeRecords, "f1.bin");
                     break;
                 case 3:
                     DBMS.searchField(scanner);
@@ -33,15 +33,7 @@ public class DBMSRunner {
                 case 4:
                     DBMS.searchRecord(scanner);
                     break;
-                case 5: // 디버깅용
-                    DBMS.loadHeaderBlockFromFile(scanner);
-                    break;
-                case 6:
-                    List<Records> records = DBMS.readRecordsFromBinaryFile("records.bin");
-                    for (Records record : records) {
-                        System.out.println(record);
-                    }
-                case 7:
+                case 5:
                     System.out.println("Exiting program.");
                     return;
                 default:
